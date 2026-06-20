@@ -1,0 +1,53 @@
+{
+  "title": "arch-diagram 技能流水线",
+  "phases": [
+    {
+      "id": "p1",
+      "num": "1",
+      "label": "结构定义",
+      "title": "收集信息 → 编写定义 JSON",
+      "phaseBg": "#f5f5f5",
+      "dotColor": "#4f5d75",
+      "rows": [
+        ["collect", "write"]
+      ]
+    },
+    {
+      "id": "p2",
+      "num": "2",
+      "label": "规则引擎",
+      "title": "色板映射 + 边线计算，零审美判断",
+      "phaseBg": "#f5f5f5",
+      "dotColor": "#4f5d75",
+      "rows": [
+        ["palette", "routing"]
+      ]
+    },
+    {
+      "id": "p3",
+      "num": "3",
+      "label": "输出验证",
+      "title": "组装 HTML → 浏览器打开 → 人工确认",
+      "phaseBg": "#f5f5f5",
+      "dotColor": "#4f5d75",
+      "rows": [
+        ["assemble", "verify"]
+      ]
+    }
+  ],
+  "nodes": {
+    "collect": { "shape": "rect", "color": "process", "text": "收集信息\n确认节点与 Phase" },
+    "write":   { "shape": "rect", "color": "process", "text": "编写定义 JSON\n按 Schema 填字段" },
+    "palette": { "shape": "rect", "color": "process", "text": "色板映射\n7 色 → 语义角色" },
+    "routing": { "shape": "rect", "color": "process", "text": "边线计算\n正交 L / 回退贝塞尔" },
+    "assemble":{ "shape": "rect", "color": "process", "text": "组装 HTML\n替换模板占位符" },
+    "verify":  { "shape": "rect", "color": "decision", "text": "浏览器验证\n布局是否正确？" }
+  },
+  "edges": [
+    { "from": "collect",  "to": "write",    "label": "下一步" },
+    { "from": "write",    "to": "palette",  "label": "Phase 1→2" },
+    { "from": "palette",  "to": "routing",  "label": "并行" },
+    { "from": "routing",  "to": "assemble", "label": "Phase 2→3" },
+    { "from": "assemble", "to": "verify",   "label": "输出" }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "title": "验证回退流水线 — arch-diagram 完整流程",
+  "phases": [
+    {
+      "id": "p1",
+      "num": "1",
+      "label": "结构定义",
+      "title": "收集信息 → 编写定义 JSON",
+      "phaseBg": "#f5f5f5",
+      "dotColor": "#4f5d75",
+      "rows": [
+        ["define"]
+      ]
+    },
+    {
+      "id": "p2",
+      "num": "2",
+      "label": "规则引擎",
+      "title": "色板映射 + 边线计算",
+      "phaseBg": "#f5f5f5",
+      "dotColor": "#4f5d75",
+      "rows": [
+        ["render"]
+      ]
+    },
+    {
+      "id": "p3",
+      "num": "3",
+      "label": "输出验证",
+      "title": "组装 HTML → 浏览器检查 → 修正或发布",
+      "phaseBg": "#f5f5f5",
+      "dotColor": "#eb6c36",
+      "rows": [
+        ["output", "verify"]
+      ]
+    }
+  ],
+  "nodes": {
+    "define":  { "shape": "rect", "color": "process",  "text": "编写定义 JSON\n节点 + Phase + 边" },
+    "render":  { "shape": "rect", "color": "process",  "text": "渲染引擎\nCSS Grid + SVG 边线" },
+    "output":  { "shape": "rect", "color": "process",  "text": "组装 HTML\n替换占位符输出" },
+    "verify":  { "shape": "diamond", "color": "decision", "text": "浏览器验证\n布局正确？" }
+  },
+  "edges": [
+    { "from": "define",  "to": "render",  "label": "输入" },
+    { "from": "render",  "to": "output",  "label": "渲染" },
+    { "from": "output",  "to": "verify",  "label": "验证" },
+    { "from": "verify",  "to": "render",  "label": "不通过 · 修正", "style": "feedback" }
+  ]
+}

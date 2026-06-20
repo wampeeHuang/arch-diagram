@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:       #f5f5f5;
+    --paper-2:     #ececec;
+    --ink:         #2d3142;
+    --muted:       #4f5d75;
+    --soft:        #7a8399;
+    --accent:      #eb6c36;
+    --accent-tint: rgba(235,108,54,0.08);
+    --rule:        rgba(45,49,66,0.12);
+    --link:        #2e5aa8;
+    --phase-gap:   24px;
+    --node-gap:    16px;
+    --node-pad-x:  20px;
+    --node-pad-y:  14px;
+    --font-sans:   'PingFang SC', 'Microsoft YaHei', 'Geist', system-ui, sans-serif;
+    --font-serif:  'Noto Serif SC', 'Instrument Serif', serif;
+    --font-mono:   'JetBrains Mono', 'Geist Mono', monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:var(--font-sans);background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased}
+  .diagram{max-width:1100px;margin:0 auto;padding:40px}
+  .diagram-title{font-family:var(--font-serif);font-size:22px;font-weight:400;letter-spacing:-0.02em;margin-bottom:28px;color:var(--ink)}
+
+  /* Phase */
+  .phase{border-radius:8px;padding:20px 24px;overflow:hidden}
+  .phase-header{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .phase-num{font-family:var(--font-mono);font-size:32px;font-weight:700;line-height:1;width:44px;text-align:center;flex-shrink:0}
+  .phase-info{display:flex;flex-direction:column;gap:2px}
+  .phase-label{font-family:var(--font-mono);font-size:9px;font-weight:500;text-transform:uppercase;letter-spacing:.14em}
+  .phase-title{font-family:var(--font-sans);font-size:14px;font-weight:600;color:var(--ink)}
+
+  /* Node shapes */
+  .node{font-family:var(--font-sans);font-size:12px;font-weight:500;line-height:1.5;text-align:center;white-space:pre-line;z-index:1}
+  .node .inner{display:flex;align-items:center;justify-content:center;border-radius:8px;border-width:1.5px;border-style:solid;width:100%;height:100%}
+  .node.shape-diamond .inner{clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);border-radius:0}
+  .node.shape-hexagon .inner{clip-path:polygon(24% 0,76% 0,100% 50%,76% 100%,24% 100%,0 50%);border-radius:0}
+  .node.shape-page .inner{border-radius:4px 10px 4px 10px}
+
+  /* SVG edges */
+  .edges-layer{overflow:visible}
+  .edges-layer path{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+  .edges-layer path.loop{stroke:var(--accent);stroke-dasharray:6 4;stroke-width:1.25}
+  .edges-layer path.feedback{stroke:var(--soft);stroke-dasharray:8 6;stroke-width:1.25}
+  .edges-layer text{font-family:var(--font-sans);font-size:11px;fill:var(--muted);font-weight:500;text-anchor:middle}
+  .edges-layer text.loop-label{fill:var(--accent)}
+</style>
+</head>
+<body>
+<div class="diagram" id="diagram">
+  <div class="diagram-title">__TITLE__</div>
+  <div id="layers"></div>
+</div>
+<script type="application/json" id="def">__DEFINITION__</script>
+<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+<script>
+(function(){
+var D = JSON.parse(document.getElementById('def').textContent);
+var diagram = document.getElementById('diagram');
+var layers = document.getElementById('layers');
+
+var PALETTE = {
+  gate:     { bg:'rgba(235,108,54,0.08)', border:'#eb6c36',       text:'#2d3142' },
+  decision: { bg:'rgba(235,108,54,0.10)', border:'#eb6c36',       text:'#2d3142' },
+  success:  { bg:'rgba(45,49,66,0.05)',   border:'#4f5d75',       text:'#2d3142' },
+  process:  { bg:'#ffffff',               border:'#2d3142',       text:'#2d3142' },
+  output:   { bg:'rgba(45,49,66,0.03)',   border:'rgba(45,49,66,0.30)', text:'#2d3142' },
+  term:     { bg:'rgba(235,108,54,0.05)', border:'rgba(235,108,54,0.45)', text:'#2d3142' },
+  start:    { bg:'rgba(79,93,117,0.08)',  border:'#7a8399',       text:'#2d3142' }
+};
+
+// ── Measure real node sizes (hidden DOM, no estimation) ──
+var measureHost = document.createElement('div');
+measureHost.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;';
+diagram.appendChild(measureHost);
+
+var nodeSizes = {};
+Object.keys(D.nodes).forEach(function(id) {
+  var node = D.nodes[id];
+  var wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:static;width:max-content;height:max-content;';
+
+  var inner = document.createElement('span');
+  inner.style.cssText =
+    'display:flex;align-items:center;justify-content:center;' +
+    'white-space:pre-line;text-align:center;' +
+    'font-family:' + 'var(--font-sans)' + ';font-size:12px;font-weight:500;line-height:1.5;' +
+    'border:1.5px solid transparent;' +
+    'padding:' + (node.shape === 'diamond' ? '26px 28px' : '14px 20px') + ';' +
+    (node.shape === 'diamond' ? 'clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%);' : '');
+  inner.textContent = node.text;
+  wrapper.appendChild(inner);
+  measureHost.appendChild(wrapper);
+
+  nodeSizes[id] = { w: wrapper.offsetWidth, h: wrapper.offsetHeight };
+  measureHost.removeChild(wrapper);
+});
+diagram.removeChild(measureHost);
+
+// ── Node → Phase mapping ──
+var nodePhase = {};
+D.phases.forEach(function(p) {
+  p.rows.forEach(function(row) {
+    row.forEach(function(nid) { if (nid) nodePhase[nid] = p.id; });
+  });
+});
+
+// ── Phase-level dagre layout ──
+var phaseGraph = new dagre.graphlib.Graph();
+phaseGraph.setGraph({ rankdir:'TB', nodesep:50, edgesep:20, ranksep:64, marginx:16, marginy:16 });
+phaseGraph.setDefaultEdgeLabel(function(){ return {}; });
+
+var HEADER_H = 56, PHASE_PAD = 20, ROW_GAP = 16;
+
+D.phases.forEach(function(p) {
+  var maxRowW = 0, totalH = HEADER_H + PHASE_PAD;
+  p.rows.forEach(function(row, ri) {
+    var rowW = 0, maxH = 0;
+    row.forEach(function(nid) {
+      if (!nid || !nodeSizes[nid]) return;
+      rowW += nodeSizes[nid].w;
+      if (nodeSizes[nid].h > maxH) maxH = nodeSizes[nid].h;
+    });
+    rowW += Math.max(0, (row.length - 1)) * ROW_GAP;
+    if (rowW > maxRowW) maxRowW = rowW;
+    totalH += maxH + (ri > 0 ? ROW_GAP : 0);
+  });
+  p._w = Math.max(maxRowW + PHASE_PAD * 2, 260);
+  p._h = totalH;
+  phaseGraph.setNode(p.id, { width:p._w, height:p._h });
+});
+
+// Cross-phase edges only
+var phaseEdges = {};
+D.edges.forEach(function(e) {
+  var fp = nodePhase[e.from], tp = nodePhase[e.to];
+  if (fp && tp && fp !== tp) {
+    var key = fp + '\x00' + tp;
+    if (!phaseEdges[key]) { phaseEdges[key] = true; phaseGraph.setEdge(fp, tp); }
+  }
+});
+
+dagre.layout(phaseGraph);
+
+var phPos = {};
+D.phases.forEach(function(p) {
+  var pn = phaseGraph.node(p.id);
+  if (pn) phPos[p.id] = { x:pn.x, y:pn.y, w:p._w, h:p._h };
+});
+
+// Compute total canvas size & remap to top-left coordinates
+var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+D.phases.forEach(function(p) {
+  var b = phPos[p.id]; if (!b) return;
+  var x1 = b.x - b.w/2, y1 = b.y - b.h/2;
+  var x2 = b.x + b.w/2, y2 = b.y + b.h/2;
+  if (x1 < minX) minX = x1; if (y1 < minY) minY = y1;
+  if (x2 > maxX) maxX = x2; if (y2 > maxY) maxY = y2;
+});
+var originX = minX, originY = minY;
+var graphW = maxX - minX, graphH = maxY - minY;
+
+layers.style.cssText = 'position:relative;margin:0 auto;width:'+graphW+'px;height:'+graphH+'px;';
+
+// Shift phase boxes to canvas coords
+D.phases.forEach(function(p) {
+  var b = phPos[p.id]; if (!b) return;
+  b.l = b.x - b.w/2 - originX; b.t = b.y - b.h/2 - originY;
+});
+
+// ── Position nodes within each phase ──
+var nodePos = {}; // { id: { x, y, w, h } } in canvas coords
+D.phases.forEach(function(p) {
+  var pb = phPos[p.id]; if (!pb) return;
+  var curY = pb.t + HEADER_H + PHASE_PAD / 2;
+  p.rows.forEach(function(row) {
+    var rowH = 0;
+    row.forEach(function(nid) {
+      if (nid && nodeSizes[nid] && nodeSizes[nid].h > rowH) rowH = nodeSizes[nid].h;
+    });
+    // Count real nodes
+    var realCount = 0, totalW = 0;
+    row.forEach(function(nid) {
+      if (nid && nodeSizes[nid]) { realCount++; totalW += nodeSizes[nid].w; }
+    });
+    totalW += (realCount - 1) * ROW_GAP;
+    var rowLeft = pb.l + (pb.w - totalW) / 2;
+
+    var x = rowLeft;
+    row.forEach(function(nid) {
+      if (!nid || !nodeSizes[nid]) return;
+      var sz = nodeSizes[nid];
+      nodePos[nid] = { x:x, y:curY + (rowH - sz.h) / 2, w:sz.w, h:sz.h };
+      x += sz.w + ROW_GAP;
+    });
+    curY += rowH + ROW_GAP;
+  });
+});
+
+// ── Render phase backdrops ──
+D.phases.forEach(function(p) {
+  var pb = phPos[p.id]; if (!pb) return;
+  var el = document.createElement('div');
+  el.className = 'phase';
+  el.style.cssText = 'position:absolute;left:'+pb.l+'px;top:'+pb.t+'px;width:'+pb.w+'px;height:'+pb.h+'px;background:'+(p.phaseBg||'var(--paper-2)')+';';
+
+  var hdr = document.createElement('div'); hdr.className = 'phase-header';
+  var num = document.createElement('span'); num.className = 'phase-num';
+  num.textContent = p.num || p.id; num.style.color = p.dotColor || 'var(--muted)';
+  var info = document.createElement('div'); info.className = 'phase-info';
+  var lbl = document.createElement('span'); lbl.className = 'phase-label';
+  lbl.textContent = p.label; lbl.style.color = p.dotColor || 'var(--muted)';
+  var title = document.createElement('span'); title.className = 'phase-title';
+  title.textContent = p.title || '';
+  info.appendChild(lbl); info.appendChild(title);
+  hdr.appendChild(num); hdr.appendChild(info);
+  el.appendChild(hdr);
+  layers.appendChild(el);
+});
+
+// ── Render nodes ──
+Object.keys(D.nodes).forEach(function(id) {
+  var node = D.nodes[id], np = nodePos[id];
+  if (!np) return;
+  var c = PALETTE[node.color] || PALETTE.process;
+
+  var wrapper = document.createElement('div');
+  wrapper.className = 'node shape-' + (node.shape || 'rect');
+  wrapper.id = 'node-' + id;
+  wrapper.style.cssText = 'position:absolute;left:'+np.x+'px;top:'+np.y+'px;width:'+np.w+'px;height:'+np.h+'px;';
+
+  var inner = document.createElement('span');
+  inner.className = 'inner';
+  inner.style.background = c.bg;
+  inner.style.borderColor = c.border;
+  inner.style.color = c.text;
+  inner.textContent = node.text;
+
+  wrapper.appendChild(inner);
+  layers.appendChild(wrapper);
+});
+
+// ── SVG edges ──
+var ns = 'http://www.w3.org/2000/svg';
+var svg = document.createElementNS(ns, 'svg');
+svg.setAttribute('viewBox', '0 0 ' + graphW + ' ' + graphH);
+svg.setAttribute('class', 'edges-layer');
+svg.style.cssText = 'position:absolute;top:0;left:0;width:'+graphW+'px;height:'+graphH+'px;pointer-events:none;z-index:2;';
+
+var defs = document.createElementNS(ns, 'defs');
+[{id:'arrow',fill:'#4f5d75'},{id:'arrow-accent',fill:'#eb6c36'},{id:'arrow-soft',fill:'#7a8399'}].forEach(function(m){
+  var mk = document.createElementNS(ns, 'marker');
+  mk.setAttribute('id',m.id); mk.setAttribute('markerWidth','6'); mk.setAttribute('markerHeight','4');
+  mk.setAttribute('refX','5'); mk.setAttribute('refY','2'); mk.setAttribute('orient','auto');
+  var p = document.createElementNS(ns, 'polygon');
+  p.setAttribute('points','0 0, 6 2, 0 4'); p.setAttribute('fill',m.fill);
+  mk.appendChild(p); defs.appendChild(mk);
+});
+svg.appendChild(defs);
+
+function edgeAttrs(style) {
+  if (style === 'feedback') return { cls:'feedback', marker:'url(#arrow-soft)' };
+  if (style === 'loop')     return { cls:'loop',     marker:'url(#arrow-accent)' };
+  return { cls:'', marker:'url(#arrow)' };
+}
+
+var edgeG = document.createElementNS(ns, 'g');
+D.edges.forEach(function(e) {
+  var src = nodePos[e.from], tgt = nodePos[e.to];
+  if (!src || !tgt) return;
+  var samePhase = nodePhase[e.from] === nodePhase[e.to];
+  var style = e.style || '';
+  var attrs = edgeAttrs(style);
+
+  var scx = src.x + src.w/2, scy = src.y + src.h/2;
+  var tcx = tgt.x + tgt.w/2, tcy = tgt.y + tgt.h/2;
+  var d, lx, ly;
+
+  if (samePhase) {
+    var srcBottom = src.y + src.h, tgtBottom = tgt.y + tgt.h;
+    var tgtBelow = tgt.y > srcBottom + 4;   // target clearly below source
+    var srcBelow = src.y > tgtBottom + 4;   // source clearly below target
+    if (tgtBelow || srcBelow) {
+      // Cross-row within phase — exit toward target
+      var exitX = scx, exitY, entryX = tcx, entryY;
+      if (tgtBelow) { exitY = srcBottom; entryY = tgt.y; }
+      else          { exitY = src.y;     entryY = tgtBottom; }
+      var absDxSP2 = Math.abs(scx - tcx);
+      var midY = (exitY + entryY) / 2;
+      if (absDxSP2 < 2) {
+        d = 'M ' + exitX + ' ' + exitY + ' L ' + entryX + ' ' + entryY;
+      } else {
+        d = 'M ' + exitX + ' ' + exitY + ' L ' + exitX + ' ' + midY + ' L ' + entryX + ' ' + midY + ' L ' + entryX + ' ' + entryY;
+      }
+      lx = (exitX + entryX) / 2;
+      ly = midY - 10;
+    } else {
+      // Same row — horizontal edge
+      var srcLeftOfTgt = scx < tcx;
+      var sx = srcLeftOfTgt ? (src.x + src.w) : src.x;
+      var tx = srcLeftOfTgt ? tgt.x : (tgt.x + tgt.w);
+      if (Math.abs(scy - tcy) < 8 && Math.abs(sx - tx) < 60) {
+        d = 'M ' + sx + ' ' + scy + ' L ' + tx + ' ' + tcy;
+      } else {
+        var midX = (sx + tx) / 2;
+        d = 'M ' + sx + ' ' + scy + ' L ' + midX + ' ' + scy + ' L ' + midX + ' ' + tcy + ' L ' + tx + ' ' + tcy;
+      }
+      lx = (sx + tx) / 2;
+      ly = (scy + tcy) / 2 - 10;
+    }
+  } else if (style === 'feedback' || style === 'loop') {
+    // Loop/feedback — route to far right
+    var rX = graphW - 16;
+    d = 'M ' + (src.x + src.w) + ' ' + scy + ' L ' + rX + ' ' + scy + ' L ' + rX + ' ' + tcy + ' L ' + tgt.x + ' ' + tcy;
+    lx = rX + 10;
+    ly = (scy + tcy) / 2;
+  } else {
+    // Cross-phase: source bottom → target top, L-shaped
+    var absDx = Math.abs(scx - tcx);
+    if (absDx < 2) {
+      d = 'M ' + scx + ' ' + (src.y + src.h) + ' L ' + tcx + ' ' + tgt.y;
+      lx = scx + 16;
+      ly = (src.y + src.h + tgt.y) / 2;
+    } else {
+      var midY = (src.y + src.h + tgt.y) / 2;
+      d = 'M ' + scx + ' ' + (src.y + src.h) + ' L ' + scx + ' ' + midY + ' L ' + tcx + ' ' + midY + ' L ' + tcx + ' ' + tgt.y;
+      lx = (scx + tcx) / 2;
+      ly = midY - 10;
+    }
+  }
+
+  var path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', d);
+  if (attrs.cls) path.classList.add(attrs.cls);
+  path.setAttribute('marker-end', attrs.marker);
+  edgeG.appendChild(path);
+
+  if (e.label) {
+    var maskW = Math.max(e.label.length * 7 + 16, 40);
+    var mask = document.createElementNS(ns, 'rect');
+    mask.setAttribute('x', lx - maskW/2); mask.setAttribute('y', ly - 12);
+    mask.setAttribute('width', maskW); mask.setAttribute('height', 14);
+    mask.setAttribute('rx', '3'); mask.setAttribute('fill', '#f5f5f5');
+    edgeG.appendChild(mask);
+
+    var text = document.createElementNS(ns, 'text');
+    text.setAttribute('x', lx); text.setAttribute('y', ly);
+    if (attrs.cls === 'loop') text.classList.add('loop-label');
+    text.textContent = e.label;
+    edgeG.appendChild(text);
+  }
+});
+svg.appendChild(edgeG);
+layers.appendChild(svg);
+})();
+</script>
+</body>
+</html>

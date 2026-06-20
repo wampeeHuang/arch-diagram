@@ -1,0 +1,58 @@
+{
+  "title": "决策分支流水线 — 以 evolution-cat-article 为例",
+  "phases": [
+    {
+      "id": "p1",
+      "num": "1",
+      "label": "输入",
+      "title": "接收写作任务 → 确认选题方向",
+      "phaseBg": "#f5f5f5",
+      "dotColor": "#4f5d75",
+      "rows": [
+        ["trigger", "topic"]
+      ]
+    },
+    {
+      "id": "p2",
+      "num": "2",
+      "label": "判断",
+      "title": "按文章类型分流处理",
+      "phaseBg": "#f5f5f5",
+      "dotColor": "#eb6c36",
+      "rows": [
+        ["decide"],
+        ["path_a", "path_b"]
+      ]
+    },
+    {
+      "id": "p3",
+      "num": "3",
+      "label": "输出",
+      "title": "两路汇合 → 统一发布",
+      "phaseBg": "#f5f5f5",
+      "dotColor": "#4f5d75",
+      "rows": [
+        ["merge"],
+        ["publish"]
+      ]
+    }
+  ],
+  "nodes": {
+    "trigger": { "shape": "rect", "color": "start",   "text": "用户发起\n写一篇公众号文章" },
+    "topic":   { "shape": "rect", "color": "process", "text": "确认选题\n查资料 + 调研" },
+    "decide":  { "shape": "diamond", "color": "decision", "text": "文章类型？" },
+    "path_a":  { "shape": "rect", "color": "process", "text": "技术深度文\n6 阶写作流程" },
+    "path_b":  { "shape": "rect", "color": "process", "text": "快讯/周报\n简版三步流程" },
+    "merge":   { "shape": "rect", "color": "success", "text": "汇合\n统一格式校验" },
+    "publish": { "shape": "rect", "color": "output",  "text": "发布\n公众号 + 多平台" }
+  },
+  "edges": [
+    { "from": "trigger", "to": "topic",   "label": "开始" },
+    { "from": "topic",   "to": "decide",  "label": "下一步" },
+    { "from": "decide",  "to": "path_a",  "label": "深度" },
+    { "from": "decide",  "to": "path_b",  "label": "简版" },
+    { "from": "path_a",  "to": "merge",   "label": "完成" },
+    { "from": "path_b",  "to": "merge",   "label": "完成" },
+    { "from": "merge",   "to": "publish", "label": "发布" }
+  ]
+}
